@@ -77,10 +77,11 @@ func run(stdout io.Writer, pkg, outputDir string, args []string) (err error) {
 	fs.BoolVar(&b2g.disableStripping, "no-strip", false, "disable stripping of DWARF")
 	flagCFlags := fs.String("cflags", "", "flags passed to the compiler, may contain quoted arguments")
 	fs.StringVar(&b2g.tags, "tags", "", "list of Go build tags to include in generated files")
-	flagTarget := fs.String("target", "bpfel,bpfeb", "clang target to compile for")
+	flagTarget := fs.String("target", "bpfel,bpfeb", "clang target(s) to compile for (comma separated)")
 	fs.StringVar(&b2g.makeBase, "makebase", "", "write make compatible depinfo files relative to `directory`")
 	fs.Var(&b2g.cTypes, "type", "`Name` of a type to generate a Go declaration for, may be repeated")
 	fs.BoolVar(&b2g.skipGlobalTypes, "no-global-types", false, "Skip generating types for map keys and values, etc.")
+	fs.StringVar(&b2g.outputStem, "output-stem", "", "alternative stem for names of generated files (defaults to ident)")
 
 	fs.SetOutput(stdout)
 	fs.Usage = func() {
@@ -150,6 +151,10 @@ func run(stdout io.Writer, pkg, outputDir string, args []string) (err error) {
 		if err != nil {
 			return err
 		}
+	}
+
+	if b2g.outputStem != "" && strings.ContainsRune(b2g.outputStem, filepath.Separator) {
+		return fmt.Errorf("-output-stem %q must not contain path separation characters", b2g.outputStem)
 	}
 
 	if strings.ContainsRune(b2g.tags, '\n') {
@@ -240,6 +245,8 @@ type bpf2go struct {
 	sourceFile string
 	// Absolute path to a directory where .go are written
 	outputDir string
+	// Alternative output stem. If empty, ident is used.
+	outputStem string
 	// Valid go package name.
 	pkg string
 	// Valid go identifier.
@@ -269,9 +276,13 @@ func (b2g *bpf2go) convert(tgt target, arches []string) (err error) {
 		f.Close()
 	}
 
-	stem := fmt.Sprintf("%s_%s", strings.ToLower(b2g.ident), tgt.clang)
+	outputStem := b2g.outputStem
+	if outputStem == "" {
+		outputStem = strings.ToLower(b2g.ident)
+	}
+	stem := fmt.Sprintf("%s_%s", outputStem, tgt.clang)
 	if tgt.linux != "" {
-		stem = fmt.Sprintf("%s_%s_%s", strings.ToLower(b2g.ident), tgt.clang, tgt.linux)
+		stem = fmt.Sprintf("%s_%s_%s", outputStem, tgt.clang, tgt.linux)
 	}
 
 	objFileName := filepath.Join(b2g.outputDir, stem+".o")
